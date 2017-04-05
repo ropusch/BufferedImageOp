@@ -5,9 +5,10 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.*;
 import java.awt.Image;
-import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.font.FontRenderContext;
+import java.awt.Point;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.*;
@@ -42,6 +43,8 @@ public class Util {
         }
         return ret;
     }
+    
+    
     /**
      * zapisuje obraz pod wskazaną nazwą. Format obrazu wyjściowego określany
      * jest na podstawie rozszerzenia
@@ -112,7 +115,9 @@ public class Util {
         WritableRaster wr = cm.createCompatibleWritableRaster(szerokosc, wysokosc);
      
         return new BufferedImage(cm, wr, false, null);
-    }      
+    }
+    
+           
     /**
      * Kopiuje obiekt src
      * 
@@ -360,7 +365,78 @@ public class Util {
         
         return drukujNapisLG(im, napis, czcionka, kolor, fromLeft, fromTop);
     }
+    
 
+    /*
+     * publiczny enum, żeby dało się wybrać typ filtra
+     */
+    
+    /**
+     * Dostępne typy filtrów dla metody dajFiltr()
+     * 
+     * @since 1.5
+     */
+    public static enum typFiltra
+    {
+        SKALUJ, ODBIJ_POZIOMO, ODBIJ_PIONOWO, OPISZ, MNOZ;
+    }
+    
+
+    /*
+     * prywatna tablica mieszająca ułatwia przechowywanie niektórych, 
+     * gotowych filtrów jeśli były już stworzone
+     * 
+     * 
+     * sekcja statyczna umożliwia JEDNOKROTNE dla klasy zainicjalizowanie
+     * struktury, która będzie potem wspólna dla wszystkich instancji
+     */
+    private static HashMap<typFiltra, BufferedImageOp> gotoweFiltry = null;    
+    static {
+        gotoweFiltry = new HashMap<Util.typFiltra, BufferedImageOp>();
+    }
+    
+    /**
+     * Metoda - "fabryka" dla interfejsu BufferedImageOp. Produkuje instancje
+     * klas wewnętrznych zgodnych z interfejsem BufferedImageOp, implementujących
+     * różne operacje zdefiniowane powyżej
+     * 
+     * @param typ Util.typFiltra.{SKALUJ, ODBIJ_POZIOMO, ODBIJ_PIONOWO itd.} 
+     * @param parametry filtra, jeśli takowych wymaga lub null, jeśli nie.
+     *        Parametry jako pary klucz => wartość umieszczane są w tablicy
+     *        mieszającej.
+     * 
+     * Parametrów wymagają:
+     * 1. Filtr skalujący typFiltra.SKALUJ: 
+     *      "skala" => "1.0", gdzie 1.0 to współczynnik skalowania
+     * 
+     * @return instancja klasy zgodnej z interfejsem BufferedimageOp implementująca
+     *         wybrany filtr
+     */
+    public static BufferedImageOp dajFiltr(typFiltra typ, HashMap<String, String> parametry)
+    {
+       
+        switch(typ)
+        {
+            case ODBIJ_PIONOWO:
+            case ODBIJ_POZIOMO:
+                // te filtry się nie zmieniają, więc za każdym razem, jak ktoś
+                // poprosi, to dostanie ten sam
+                if (!gotoweFiltry.containsKey(typ))
+                    gotoweFiltry.put(typ, new FiltrOdbijajacy(typ));
+                 return gotoweFiltry.get(typ);
+
+            case SKALUJ:
+                 // ten filtr zależy od skali, więc za każdym razem 
+                 // zwracany jest nowy                
+                return new FiltrSkalujacy(parametry);
+                         
+            default:
+                throw new IllegalArgumentException("Ten typ filtra nie jest dostępny");
+                    
+        }
+    }
+    
+    
     
     // UWAGA: 
     // to jest klasa prywatna, rozszerzająca klasę abstrakcyjną filtr
@@ -402,7 +478,7 @@ public class Util {
     // jej definicja jest prywatna itp. Ilekolwiek metody nie byłoby dla niej
     // zdefiniowanych tutaj, na zewnątrz widoczne będą tylko te 4 określone
     // przez interfejs BufferedImageOp.
-
+    
     static private class FiltrSkalujacy extends Filtr 
     {
         private double skala = 1.0;
@@ -520,17 +596,6 @@ public class Util {
 
     }
     
-    /**
-     * Dostępne typy filtrów 
-     * 
-     * @since 1.5
-     */
-    public static enum typFiltra
-    {
-        ODBIJ_POZIOMO, ODBIJ_PIONOWO;
-    }
-    
-    
     /* filtry, które nie wymagają dodatkowych parametrów */
     static private class FiltrOdbijajacy extends Filtr
     {
@@ -603,43 +668,116 @@ public class Util {
             // korzystamy z metody pomocniczej klasy abstakcyjnej
             return Filtr.getPoint2D_same(srcPt, dstPt);
         }
+        
+    
+        
+        
     }
-
-
+    
+    
     /* Testowanie wybranych metod;
      * klas zawierających metodę main() może być w projekcie dużo.
      * Trzeba tylko pamiętać o określeniu tej "startowej"
      */
-    public static void main(String args[]) throws IOException
+    public static void main(String args[])
     {
         
         String nazwaPliku = (args.length > 0) ? args[0] : "obrazek.png";
         
-        // 1. Czytanie obrazka i zapisywanie wyników
+        /* inny przykład pokazujący zastosowanie tablicy mieszającej;
+         * zwróć jednak uwage na to, jaka będzie kolejność wykonywania
+         * operacji
+         */
+        HashMap<String, BufferedImageOp> op = 
+                        new HashMap<String, BufferedImageOp>();
+        
+        BufferedImageOp el;
+        
+        // 1. standardowy filtr
+        final float skala = 1f/9f;
+        Kernel k = new Kernel(3, 3, new float[] {skala, skala, skala,
+                                                 skala, skala, skala,
+                                                 skala, skala, skala,});
+
+        el = new ConvolveOp(k);
+        op.put("wygladzanie", el);
+        
+        // 2. znieksztalcenie
+        el = new AffineTransformOp(AffineTransform.getShearInstance(2, 2), null);
+        op.put("znieksztalcenie", el);
+        
+        // 3. NASZE odbicia
+        op.put("odbicieV", Util.dajFiltr(Util.typFiltra.ODBIJ_PIONOWO, null));
+        op.put("odbicieH", Util.dajFiltr(Util.typFiltra.ODBIJ_POZIOMO, null));
+        
+        
+        // 4. NASZE skalowanie
+        HashMap<String, String> param = new HashMap<String, String>();
+        param.put("skala", "0.5");
+        op.put("skala", Util.dajFiltr(Util.typFiltra.SKALUJ, param));
+        
+        // 4. Czytanie obrazka i zapisywanie wyników
         BufferedImage x = czytaj(nazwaPliku);
         if (x == null)
             System.exit(1);
 
-//        // parametry filtra
-        HashMap<String, String> param = new HashMap<String, String>();
-        param.put("skala", "2");
-        // filtr - skalowanie
-        BufferedImageOp operacja = new FiltrSkalujacy(param);
-        BufferedImage y = operacja.createCompatibleDestImage(x, null);
-        // działaj
-        operacja.filter(x, y);
-        zapisz(y, "1_odbity" + nazwaPliku);
-
+        BufferedImage y = x;
         
-        operacja = new FiltrOdbijajacy(typFiltra.ODBIJ_PIONOWO);
+        Integer i = 0;
+        String sekwencja = "";
 
-        // stwórz miejsce na wynik
-        y = operacja.createCompatibleDestImage(x, null);
-        // działaj
-        operacja.filter(x, y);
-        zapisz(y, "2_odbity" + nazwaPliku);
-      
-        
+        // pętla foreach() !
+        for (String key : op.keySet())
+        {
+            System.out.println("Próba filtra: " + key);
+            BufferedImageOp bio = op.get(key);
+            
+            // test bez prealokowania
+            BufferedImage y1 = bio.filter(x, null);
+            
+            // test z wykorzystaniem  createCompatibleDestImage()
+            BufferedImage y2 = bio.createCompatibleDestImage(x, null);
+            bio.filter(x, y2);
+            
+            // a przy okazji metoda mnóż...
+            y2 = mnoz(x, y2);
+            
+            
+            try {
+                zapisz(y1, "_" + key + "p1.jpg");    
+            } 
+            catch (IOException e)
+            {
+                System.out.println("Zapisanie obrazka " + key + 
+                        "(próba 1) nie powiodło się");
+            }
+
+            try {
+                zapisz(y2, "_" + key + "p2.jpg");    
+            } 
+            catch (IOException e)
+            {
+                System.out.println("Zapisanie obrazka " + key + 
+                        "(próba 2) nie powiodło się");
+            }
+            
+            // przetwarzanie sekwencyjne
+            System.out.println("sekwencja");
+            sekwencja = sekwencja + "-" + key;
+            y = bio.filter(y, null);
+
+            try {
+                zapisz(y, "_" + i.toString() + "_" + sekwencja + ".jpg");    
+            }   
+            catch (IOException e)
+            {
+                System.out.println("Zapisanie obrazka " + key + 
+                        "(próba 3) nie powiodło się");
+            }         
+            i++;
+            
+            
+        }
         
     }            
     
