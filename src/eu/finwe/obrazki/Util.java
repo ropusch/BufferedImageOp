@@ -519,6 +519,91 @@ public class Util {
         }    
 
     }
+    
+    /**
+     * Dostępne typy filtrów 
+     * 
+     * @since 1.5
+     */
+    public static enum typFiltra
+    {
+        ODBIJ_POZIOMO, ODBIJ_PIONOWO;
+    }
+    
+    
+    /* filtry, które nie wymagają dodatkowych parametrów */
+    static private class FiltrOdbijajacy extends Filtr
+    {
+        private final typFiltra typ;
+
+        public FiltrOdbijajacy(typFiltra typ) {
+            this.typ = typ;
+        }
+        
+        /* teraz uzupełnimy metody abstrakcyjnej klasy Filtr - w praktyce
+           brakujące metody BufferedImageOp */
+        
+        @Override
+        public BufferedImage filter(BufferedImage src, BufferedImage dest)
+        {
+            
+            BufferedImage ret;
+
+            switch(this.typ)
+            {
+                case ODBIJ_POZIOMO:
+                    ret = Util.odbijPoziomo(src);
+                    break;
+                case ODBIJ_PIONOWO:
+                    ret = Util.odbijPionowo(src);
+                    break;
+                default:
+                    ret = src;
+            }
+            
+            if (dest == null)
+            {
+                ColorModel naszCM = src.getColorModel();
+                dest = createCompatibleDestImage(src, naszCM);
+            }
+            
+            kopiujW(ret, dest);
+            
+            return dest;
+        }
+   
+        @Override
+        public Rectangle2D getBounds2D(BufferedImage src)
+        {
+            return src.getRaster().getBounds();
+        }        
+        
+        @Override
+        public Point2D getPoint2D(Point2D srcPt, Point2D dstPt)
+        {
+
+            switch (typ)
+            {
+                // nie da się określić położenia punktu bez wymiarów obrazka,
+                // bazowego, więc nie ma wielkiego wyboru.
+                // 
+                // nie jest to w dobrym stylu... można by to obejść produkując
+                // instancje filtra dla konkretnych obrazków
+                //
+                // BufferedImageOp x = new FiltrOdbijajacy(..., BufferedImage obraz);
+                //
+                // ale w tym [laboratoryjnym] przypadku nie ma większego sensu
+                
+                case ODBIJ_PIONOWO:
+                case ODBIJ_POZIOMO:
+                    throw new UnsupportedOperationException("Destination " + 
+                            "point cannot be determined for this filter");
+            }
+
+            // korzystamy z metody pomocniczej klasy abstakcyjnej
+            return Filtr.getPoint2D_same(srcPt, dstPt);
+        }
+    }
 
 
     /* Testowanie wybranych metod;
@@ -535,16 +620,24 @@ public class Util {
         if (x == null)
             System.exit(1);
 
-        // parametry filtra
+//        // parametry filtra
         HashMap<String, String> param = new HashMap<String, String>();
         param.put("skala", "2");
         // filtr - skalowanie
         BufferedImageOp operacja = new FiltrSkalujacy(param);
-        // stwórz miejsce na wynik
         BufferedImage y = operacja.createCompatibleDestImage(x, null);
         // działaj
         operacja.filter(x, y);
-        zapisz(y, "1_filtrowany" + nazwaPliku);
+        zapisz(y, "1_odbity" + nazwaPliku);
+
+        
+        operacja = new FiltrOdbijajacy(typFiltra.ODBIJ_PIONOWO);
+
+        // stwórz miejsce na wynik
+        y = operacja.createCompatibleDestImage(x, null);
+        // działaj
+        operacja.filter(x, y);
+        zapisz(y, "2_odbity" + nazwaPliku);
       
         
         
