@@ -5,7 +5,10 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.*;
 import java.awt.Image;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.font.FontRenderContext;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.*;
 import java.util.HashMap;
@@ -358,6 +361,165 @@ public class Util {
         return drukujNapisLG(im, napis, czcionka, kolor, fromLeft, fromTop);
     }
 
+    
+    // UWAGA: 
+    // to jest klasa prywatna, rozszerzająca klasę abstrakcyjną filtr
+    // o dostępie pakietowym. Innymi słowy z zewnątrz NIE JEST DOSTĘPNA.
+    //
+    // Klasa ta dziedziczy bo Filtr, bo dzięki temu nie musi implementować
+    // createCompatibleDestImage() wymaganej przez interefejs BufferedImageOp.
+    // Z faktu, że dziedziczy po Filtr wynika również siłą rzeczy, że 
+    // implementuje interfejs BufferedImageOp, więc nie trzeba tutaj tago
+    // osobno zaznaczać.
+    //
+    //
+    // Klasa ta ma modyfikator static, który mówi, że jest specyficzna 
+    // NIE dla jakiejś instancji klasy Util, a dla wszystkich jej wystąpień.
+    // 
+    // W PRAKTYCE:
+    //
+    // Klasa wewnętrzna może korzystać z metod i pól klasy zewnętrznej (nawet
+    // tych prywatnych!). 
+    // 
+    // Jeśli modyfikatora static by nie było, to znaczy, że klasa
+    // ta miałaby dostęp do danych konkretnej instancji klasy zewnętrznej, ale
+    // oznaczałoby też, że taka instancja musiałaby istnieć, żeby stworzyć
+    // instancję tej klasy (czyli x = new Util() a dopiero potem możnaby poprosić
+    // x o stworzenie filtra x.dajFiltr()
+    //
+    // Tak ma dostęp tylko do pól statycznych, ale to tu wystarczy.
+    //
+    // REASUMUJĄC:
+    // Jeśli byłaby niestatyczna, to nie dałoby się stworzyć jej instancji 
+    // bez instancji klasy zewnętrznej, a to nam tu nie jest potrzebne, 
+    // a wręcz przeszkadza.
+    //
+    // UWAGA 2:
+    //
+    // To ma sens: na zewnątrz ta klasa pojawia się jako zwrócona przez 
+    // metodę dajFiltr(), czyli funkcjonuje jako "jakaś tam klasa, zgodna
+    // z interfejsem BufferedImageOp". Kompilatora nie obchodzi, że
+    // jej definicja jest prywatna itp. Ilekolwiek metody nie byłoby dla niej
+    // zdefiniowanych tutaj, na zewnątrz widoczne będą tylko te 4 określone
+    // przez interfejs BufferedImageOp.
+
+    static private class FiltrSkalujacy extends Filtr 
+    {
+        private double skala = 1.0;
+        /**
+         * Tworzy filtr skalujący; 
+         * 
+         * @param parametry = new Hashtable<String, String>{"skala", "1.0"}
+         */
+        
+        FiltrSkalujacy(HashMap<String, String> parametry)
+        {
+            if (!(parametry == null) && parametry.containsKey("skala"))
+                try {
+                    skala = Double.parseDouble(parametry.get("skala"));    
+                } 
+                catch (NumberFormatException e)
+                {
+                    throw new IllegalArgumentException("Podano zły parametr skali");
+                }
+        }
+        
+        /**
+         * Tworzy filtr skalujący o skali 1.0
+         */
+        FiltrSkalujacy()
+        {
+            // wywołanie konstruktora z konstruktora
+            this(null);
+        }
+        
+        /** 
+         * Performs a single-input/single-output operation on a BufferedImage. 
+         * If the color models for the two images do not match, a color conversion 
+         * into the destination color model is performed. If the destination image 
+         * is null, a BufferedImage with an appropriate ColorModel is created.
+         * 
+         * @param src The BufferedImage to be filtered
+         * @param dest The BufferedImage in which to store the results
+         * @return The filtered BufferedImage. 
+         */
+
+        @Override
+        public BufferedImage filter(BufferedImage src, BufferedImage dest)
+        {
+            // skalowanie
+            BufferedImage tmp = Util.skaluj(src, skala);
+
+            // jeśli dest jest dane, to _musimy_ skorzystać, jeśli nie, to
+            // może się zdarzyć, ze tmp ma inny ColorModel niż src, dlatego
+            // tak czy siak tworzymy dest
+            if (dest == null)
+            {
+                ColorModel naszCM = src.getColorModel();
+                dest = createCompatibleDestImage(src, naszCM);
+            }
+            
+            // kopiuj w obrazek dest; to przy okazji przekonwertuje kolory
+            // korzystamy zatem z metody PRYWATNEJ klasy zewnętrznej!
+            kopiujW(tmp, dest);
+            
+            return dest;
+        }
+        
+        /**
+         * Returns the bounding box of the filtered destination image. 
+         * An IllegalArgumentException may be thrown if the source image is 
+         * incompatible with the types of images allowed by the class implementing 
+         * this filter.
+         * 
+         * @param src The BufferedImage to be filtered 
+         * @return The Rectangle2D representing the destination image's bounding box.
+         */
+        @Override
+        public Rectangle2D getBounds2D(BufferedImage src)
+        {
+            int w = src.getWidth();
+            int h = src.getHeight();
+            
+            w = (int)(w * skala);
+            h = (int)(h * skala);
+            
+            Rectangle2D ret = new Rectangle(w, h);
+
+            return ret;
+        }
+    
+        /**
+         * Returns the location of the corresponding destination point given 
+         * a point in the source image. If dstPt is specified, it is used to hold 
+         * the return value.
+         * @param srcPt The Point2D that represents the point in the source image
+         * @param dstPt The Point2D in which to store the result 
+         * @return The Point2D in the destination image that corresponds to the 
+         *          specified point in the source image.
+         */        
+        @Override
+        public Point2D getPoint2D(Point2D srcPt, Point2D dstPt)
+        {
+            double x = srcPt.getX();
+            double y = srcPt.getY();
+            
+            x *= skala;
+            y *= skala;
+            
+            Point2D tmp = new Point.Double(x, y);
+            
+            // alternatywnie: 
+            //return Filtr.getPoint2D_same(tmp, dstPt);
+            
+            if (dstPt != null)
+                dstPt.setLocation(tmp);
+            
+            return tmp;
+        }    
+
+    }
+
 
     /* Testowanie wybranych metod;
      * klas zawierających metodę main() może być w projekcie dużo.
@@ -373,16 +535,17 @@ public class Util {
         if (x == null)
             System.exit(1);
 
-        BufferedImage y = odbijPionowo(x);
-        zapisz(y, "1_odbity" + nazwaPliku);
-        
-        y = skaluj(y, 2);
-        zapisz(y, "2_skalowany" + nazwaPliku);
-                
-        
-        Font f = new Font("Arial", Font.BOLD, 15);
-        y = drukujNapisLG(y, "Jestem napisem", f, Color.yellow, 10, 10);
-        zapisz(y, "3_napis" + nazwaPliku);
+        // parametry filtra
+        HashMap<String, String> param = new HashMap<String, String>();
+        param.put("skala", "2");
+        // filtr - skalowanie
+        BufferedImageOp operacja = new FiltrSkalujacy(param);
+        // stwórz miejsce na wynik
+        BufferedImage y = operacja.createCompatibleDestImage(x, null);
+        // działaj
+        operacja.filter(x, y);
+        zapisz(y, "1_filtrowany" + nazwaPliku);
+      
         
         
     }            
