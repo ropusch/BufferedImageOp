@@ -378,7 +378,7 @@ public class Util {
      */
     public static enum typFiltra
     {
-        SKALUJ, ODBIJ_POZIOMO, ODBIJ_PIONOWO, OPISZ, MNOZ;
+        SKALUJ, ODBIJ_POZIOMO, ODBIJ_PIONOWO, OPISZ, MNOZ, NIC;
     }
     
 
@@ -429,6 +429,13 @@ public class Util {
                  // ten filtr zależy od skali, więc za każdym razem 
                  // zwracany jest nowy                
                 return new FiltrSkalujacy(parametry);
+                
+            case NIC:
+                
+                //jeden nic
+                if (!gotoweFiltry.containsKey(typ))
+                    gotoweFiltry.put(typ, new FiltrBezuzyteczny());
+                 return gotoweFiltry.get(typ);
                          
             default:
                 throw new IllegalArgumentException("Ten typ filtra nie jest dostępny");
@@ -674,7 +681,27 @@ public class Util {
         
     }
     
+    static private class FiltrBezuzyteczny extends Filtr{
+        
+        
+        
+        @Override
+        public Rectangle2D getBounds2D(BufferedImage src)
+        {
+            return null;
+        }                
+
+        @Override
+        public BufferedImage filter(BufferedImage src, BufferedImage dest) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
+
+        @Override
+        public Point2D getPoint2D(Point2D srcPt, Point2D dstPt) {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
     
+    }
     /* Testowanie wybranych metod;
      * klas zawierających metodę main() może być w projekcie dużo.
      * Trzeba tylko pamiętać o określeniu tej "startowej"
